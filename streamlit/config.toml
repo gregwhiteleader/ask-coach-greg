@@ -1,0 +1,15 @@
+[theme]
+primaryColor="#6C47FF"
+backgroundColor="#FFFFFF"
+secondaryBackgroundColor="#F5F7FB"
+textColor="#111111"
+font="sans serif"
+
+[server]
+# Helps on smaller hosts and mobile networks
+maxUploadSize = 50
+enableXsrfProtection = true
+
+[client]
+# Reduces jank on mobile by trimming cache a bit
+toolbarMode = "minimal"
