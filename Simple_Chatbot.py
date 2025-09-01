@@ -43,12 +43,11 @@ st.markdown("""
     font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
   }
 
-  /* HEADER photo: circle crop + border (works even if border-radius is ignored elsewhere) */
+  /* HEADER photo: circle crop + subtle border */
   .cg-header-avatar img {
     width: 64px !important;
     height: 64px !important;
     object-fit: cover !important;
-    /* try multiple ways to force a circle; if any fail, border still shows elegantly */
     border-radius: 50% !important;
     -webkit-clip-path: circle(50% at 50% 50%);
     clip-path: circle(50% at 50% 50%);
@@ -71,7 +70,95 @@ def find_avatar_path() -> str | None:
             return fname
     return None
 
-def img_to_base64(path: str) -> tuple[str, str]:
-    """Return (data_uri, mime) for local image."""
+def img_to_data_uri(path: str) -> str:
+    """Return a data: URI for a local image (png/jpg)."""
     ext = os.path.splitext(path)[1].lower()
-    mime = "imag
+    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+    with open(path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+    return f"data:{mime};base64,{b64}"
+
+avatar_path = find_avatar_path()
+bot_avatar = avatar_path if avatar_path else "🤖"
+
+# --- Header: circular/bordered top photo + title/subtitle (no reset here) ---
+st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
+hcol_img, hcol_text = st.columns([0.16, 0.84])
+
+with hcol_img:
+    if avatar_path:
+        data_uri = img_to_data_uri(avatar_path)
+        st.markdown(
+            f'<div class="cg-header-avatar"><img alt="Coach Greg" src="{data_uri}"/></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown("🤖")
+
+with hcol_text:
+    st.markdown('<div class="cg-title">', unsafe_allow_html=True)
+    st.title("Ask Coach Greg?")
+    st.markdown('<div class="cg-subtle"><strong>Model:</strong> gpt-4o-mini</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# --- Session state ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Cap history for performance
+MAX_HISTORY = 50
+if len(st.session_state.messages) > MAX_HISTORY:
+    st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
+
+# --- Chat history (assistant uses your headshot as avatar) ---
+for message in st.session_state.messages:
+    avatar = bot_avatar if message["role"] == "assistant" else None
+    with st.chat_message(message["role"], avatar=avatar):
+        st.markdown(message["content"])
+
+# --- Chat input & LLM call ---
+temperature = 0.7
+max_token_length = 1000
+placeholder = "Ask about Agile or Traditional PM (e.g., ‘Sprint Review agenda’ or ‘baseline variance handling’)"
+
+if user_prompt := st.chat_input(placeholder):
+    with st.chat_message("user"):
+        st.markdown(user_prompt)
+    st.session_state.messages.append({"role": "user", "content": user_prompt})
+
+    with st.chat_message("assistant", avatar=bot_avatar):
+        with st.spinner("Thinking…"):
+            try:
+                llm_response = chat(
+                    user_prompt,
+                    model="gpt-4o-mini",
+                    max_tokens=max_token_length,
+                    temp=temperature,
+                    use_openai=True,
+                )
+                stream_output = st.write_stream(stream_parser(llm_response))
+            except Exception as e:
+                stream_output = f"⚠️ Error generating response: {e}"
+                st.error(stream_output)
+
+    st.session_state.messages.append({"role": "assistant", "content": stream_output})
+
+# --- Actions row (AFTER messages so it shows on first turn) ---
+if st.session_state.messages:
+    transcript = "\n\n".join(
+        f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages
+    )
+    col_dl, col_reset = st.columns(2)
+    with col_dl:
+        st.download_button(
+            "Download Transcript",
+            transcript,
+            file_name="chat_transcript.txt",
+            use_container_width=True,
+        )
+    with col_reset:
+        if st.button("Reset Chat", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
