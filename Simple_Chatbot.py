@@ -1,8 +1,7 @@
 # Simple_Chatbot.py
-import os, io, base64
+import os
 import streamlit as st
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw, ImageOps
 from helpers.llm_helper import chat, stream_parser
 from config import Config  # noqa: F401
 
@@ -15,19 +14,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ---- Tuning: vertical crop focus for the header photo (0.0 = top, 1.0 = bottom) ----
-# Smaller value = bias crop toward the top so your head isn't cut.
-FOCUS_Y = 0.05  # try 0.18–0.30 to taste
-
-# --- CSS: tight padding, sticky input, tidy header ---
+# --- Minimal CSS: tidy spacing, sticky input, circle/border on header image ---
 st.markdown("""
 <style>
   .block-container { padding-top: 0.75rem !important; padding-bottom: 1.25rem !important; }
   textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
-  [data-testid="stImage"] img { max-width: 100% !important; height: auto !important; }
   @media (max-width: 640px) {
     [data-testid="stChatInput"] { position: sticky; bottom: 0; z-index: 5; }
   }
+  /* header title sizing */
   .cg-title h1 {
     margin-bottom: 0.25rem !important;
     line-height: 1.1 !important;
@@ -35,77 +30,43 @@ st.markdown("""
   }
   .cg-subtle { margin-top: 0rem !important; color: #6b7280; font-size: clamp(0.9rem, 2.6vw, 1rem) !important; }
 
-  /* Header avatar (we already mask to a true circle on the server; border just for polish) */
-  .cg-header-avatar img {
-    width: 72px; height: 72px; border-radius: 50%;
-    border: 2px solid #e5e7eb; display: block;
+  /* Make the TOP photo a circle with a subtle border */
+  .cg-header img {
+    width: 72px !important; height: 72px !important;
+    border-radius: 50% !important;           /* perfect circle if the source is square */
+    object-fit: cover !important;             /* safe even if the source isn't perfectly square */
+    border: 2px solid #e5e7eb !important;     /* subtle border */
+    display: block;
   }
   @media (max-width: 640px) {
+    .cg-header img { width: 56px !important; height: 56px !important; }
     .cg-header-wrap .stColumn { width: 100% !important; display: block !important; }
-    .cg-header-avatar img { width: 56px; height: 56px; }
-  }
-
-  /* Make assistant avatar in chat circular too */
-  [data-testid="stChatMessageAvatar"] img {
-    border-radius: 50% !important;
-    object-fit: cover !important;
   }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Helpers ---
+# --- Resolve avatar path (prefer a pre-cropped square) ---
 def find_avatar_path() -> str | None:
-    for fname in ("coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"):
+    for fname in (
+        "coach_greg_square.png", "coach_greg_square.jpg",
+        "coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"
+    ):
         if os.path.exists(fname):
             return fname
     return None
 
-def crop_square_top_biased(img: Image.Image, center_y: float) -> Image.Image:
-    """
-    Crop to a square using PIL ImageOps.fit with vertical centering control.
-    center_y in [0,1]: 0 = top, 0.5 = middle, 1 = bottom.
-    This reliably keeps foreheads in-frame for portrait shots.
-    """
-    center_y = max(0.0, min(1.0, center_y))
-    # First crop to the largest centered square using the requested vertical centering,
-    # then resize later to our display size.
-    min_dim = min(img.size)
-    # ImageOps.fit crops to the requested SIZE and RESIZES; give it min_dim x min_dim first
-    square = ImageOps.fit(img, (min_dim, min_dim), method=Image.LANCZOS, centering=(0.5, center_y))
-    return square
-
-def circle_mask(size: int) -> Image.Image:
-    m = Image.new("L", (size, size), 0)
-    d = ImageDraw.Draw(m)
-    d.ellipse((0, 0, size, size), fill=255)
-    return m
-
-def make_header_circle_data_uri(path: str, size: int = 72, center_y: float = 0.22) -> str:
-    """Load image, square-crop with top bias, resize, apply circular alpha, return PNG data URI."""
-    img = Image.open(path).convert("RGBA")
-    sq = crop_square_top_biased(img, center_y=center_y)
-    sq = sq.resize((size, size), Image.LANCZOS)
-
-    # Apply circular mask (transparent corners)
-    mask = circle_mask(size)
-    sq.putalpha(mask)
-
-    buf = io.BytesIO()
-    sq.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
-
 avatar_path = find_avatar_path()
 bot_avatar = avatar_path if avatar_path else "🤖"
 
-# --- Header: server-cropped circular PNG + title/subtitle ---
+# --- Header: small circular photo + title/subtitle ---
 st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
 hcol_img, hcol_text = st.columns([0.16, 0.84])
 
 with hcol_img:
     if avatar_path:
-        data_uri = make_header_circle_data_uri(avatar_path, size=72, center_y=FOCUS_Y)
-        st.markdown(f'<div class="cg-header-avatar"><img alt="Coach Greg" src="{data_uri}"/></div>', unsafe_allow_html=True)
+        st.markdown('<div class="cg-header">', unsafe_allow_html=True)
+        st.image(avatar_path)   # CSS above controls size/shape
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown("🤖")
 
@@ -113,7 +74,7 @@ with hcol_text:
     st.markdown('<div class="cg-title">', unsafe_allow_html=True)
     st.title("Ask Coach Greg?")
     st.markdown('<div class="cg-subtle"><strong>Model:</strong> gpt-4o-mini</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -126,7 +87,7 @@ MAX_HISTORY = 50
 if len(st.session_state.messages) > MAX_HISTORY:
     st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
 
-# --- Render history (assistant uses your headshot path as avatar) ---
+# --- Render history (assistant uses your headshot as avatar) ---
 for message in st.session_state.messages:
     avatar = bot_avatar if message["role"] == "assistant" else None
     with st.chat_message(message["role"], avatar=avatar):
@@ -159,11 +120,9 @@ if user_prompt := st.chat_input(placeholder):
 
     st.session_state.messages.append({"role": "assistant", "content": stream_output})
 
-# --- Actions row (AFTER messages so it shows on first turn) ---
+# --- Bottom actions (show after first message) ---
 if st.session_state.messages:
-    transcript = "\n\n".join(
-        f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages
-    )
+    transcript = "\n\n".join(f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages)
     col_dl, col_reset = st.columns(2)
     with col_dl:
         st.download_button(
