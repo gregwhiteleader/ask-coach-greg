@@ -14,42 +14,63 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- Minimal CSS: tidy spacing, sticky input, circle/border on header image ---
+# ---------- CSS: small, circular header photo + tidy header + sticky input ----------
 st.markdown("""
 <style>
   .block-container { padding-top: 0.75rem !important; padding-bottom: 1.25rem !important; }
+
+  /* prevent iOS zoom on focus */
   textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
+
+  /* sticky chat input on small screens */
   @media (max-width: 640px) {
     [data-testid="stChatInput"] { position: sticky; bottom: 0; z-index: 5; }
   }
-  /* header title sizing */
+
+  /* Title + subtitle sizing */
   .cg-title h1 {
     margin-bottom: 0.25rem !important;
     line-height: 1.1 !important;
     font-size: clamp(1.35rem, 4vw + 0.25rem, 2.15rem) !important;
   }
-  .cg-subtle { margin-top: 0rem !important; color: #6b7280; font-size: clamp(0.9rem, 2.6vw, 1rem) !important; }
-
-  /* Make the TOP photo a circle with a subtle border */
-  .cg-header img {
-    width: 72px !important; height: 72px !important;
-    border-radius: 50% !important;           /* perfect circle if the source is square */
-    object-fit: cover !important;             /* safe even if the source isn't perfectly square */
-    border: 2px solid #e5e7eb !important;     /* subtle border */
-    display: block;
+  .cg-subtle {
+    margin-top: 0rem !important;
+    color: #6b7280;
+    font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
   }
+
+  /* ---- Header image rules (HIGH SPECIFICITY) ----
+     Force a perfect circle, controlled size, and top-biased crop.
+     Works regardless of how Streamlit wraps <img>.
+  */
+  .cg-header [data-testid="stImage"] img,
+  .cg-header img {
+    width: 72px !important;
+    height: 72px !important;            /* keep square so border-radius makes a circle */
+    border-radius: 50% !important;       /* circle */
+    object-fit: cover !important;        /* crop to fill the circle */
+    object-position: 50% 20% !important; /* bias upward so forehead isn't cut off */
+    border: 2px solid #e5e7eb !important;
+    display: block !important;
+  }
+
+  /* Stack header on phones + smaller avatar */
   @media (max-width: 640px) {
-    .cg-header img { width: 56px !important; height: 56px !important; }
     .cg-header-wrap .stColumn { width: 100% !important; display: block !important; }
+    .cg-header [data-testid="stImage"] img,
+    .cg-header img {
+      width: 56px !important;
+      height: 56px !important;
+    }
   }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Resolve avatar path (prefer a pre-cropped square) ---
+# ---------- Resolve avatar path (use your square if available) ----------
 def find_avatar_path() -> str | None:
     for fname in (
-        "coach_greg_square.png", "coach_greg_square.jpg",
-        "coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"
+        "coach_greg_square.png", "coach_greg_square.jpg",   # preferred (already square)
+        "coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg",
     ):
         if os.path.exists(fname):
             return fname
@@ -58,14 +79,15 @@ def find_avatar_path() -> str | None:
 avatar_path = find_avatar_path()
 bot_avatar = avatar_path if avatar_path else "🤖"
 
-# --- Header: small circular photo + title/subtitle ---
+# ---------- Header: small circular photo + title/subtitle ----------
 st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
 hcol_img, hcol_text = st.columns([0.16, 0.84])
 
 with hcol_img:
     if avatar_path:
         st.markdown('<div class="cg-header">', unsafe_allow_html=True)
-        st.image(avatar_path)   # CSS above controls size/shape
+        # width caps desktop size; CSS above enforces circle + mobile size override
+        st.image(avatar_path, width=72)
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown("🤖")
@@ -78,7 +100,7 @@ with hcol_text:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- Session state ---
+# ---------- Session state ----------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -87,13 +109,13 @@ MAX_HISTORY = 50
 if len(st.session_state.messages) > MAX_HISTORY:
     st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
 
-# --- Render history (assistant uses your headshot as avatar) ---
+# ---------- Render chat history (assistant uses your headshot as avatar) ----------
 for message in st.session_state.messages:
     avatar = bot_avatar if message["role"] == "assistant" else None
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
-# --- Chat input & LLM call ---
+# ---------- Chat input & LLM call ----------
 temperature = 0.7
 max_token_length = 1000
 placeholder = "Ask about Agile or Traditional PM (e.g., ‘Sprint Review agenda’ or ‘baseline variance handling’)"
@@ -120,9 +142,11 @@ if user_prompt := st.chat_input(placeholder):
 
     st.session_state.messages.append({"role": "assistant", "content": stream_output})
 
-# --- Bottom actions (show after first message) ---
+# ---------- Bottom actions (show after first turn) ----------
 if st.session_state.messages:
-    transcript = "\n\n".join(f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages)
+    transcript = "\n\n".join(
+        f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages
+    )
     col_dl, col_reset = st.columns(2)
     with col_dl:
         st.download_button(
