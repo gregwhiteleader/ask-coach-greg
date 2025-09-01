@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ---- Tuning: vertical crop focus for the header photo (percent from top) ----
-FOCUS_Y = 18  # try 15–25; lower = show more top
+FOCUS_Y = 15  # try 15–25; lower = show more top
 
 # --- CSS: tight padding, sticky input, tidy header ---
 st.markdown("""
