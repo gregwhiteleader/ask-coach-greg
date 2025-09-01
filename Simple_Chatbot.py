@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ---- Tuning: vertical crop focus for the header photo (percent from top) ----
-FOCUS_Y = 20  # try 25–40 if you want a bit more/less forehead shown
+FOCUS_Y = 10  # try 25–40 if you want a bit more/less forehead shown
 
 # --- CSS: tight padding, sticky input, responsive header, circular/bordered image ---
 st.markdown("""
