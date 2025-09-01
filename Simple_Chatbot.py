@@ -1,8 +1,8 @@
 # Simple_Chatbot.py
-import os
-import base64
+import os, io, base64
 import streamlit as st
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw
 from helpers.llm_helper import chat, stream_parser
 from config import Config  # noqa: F401
 
@@ -16,51 +16,38 @@ st.set_page_config(
 )
 
 # ---- Tuning: vertical crop focus for the header photo (percent from top) ----
-FOCUS_Y = 1  # lower = show more top; try 15–25 to taste
+FOCUS_Y = 18  # try 15–25; lower = show more top
 
-# --- CSS: tight padding, sticky input, responsive header, circular/bordered image ---
+# --- CSS: tight padding, sticky input, tidy header ---
 st.markdown("""
 <style>
   .block-container { padding-top: 0.75rem !important; padding-bottom: 1.25rem !important; }
-
-  /* prevent iOS zoom on focus */
   textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
-
-  /* generic images sanity */
   [data-testid="stImage"] img { max-width: 100% !important; height: auto !important; }
-
-  /* sticky chat input on small screens */
   @media (max-width: 640px) {
     [data-testid="stChatInput"] { position: sticky; bottom: 0; z-index: 5; }
   }
-
-  /* header title sizing */
   .cg-title h1 {
     margin-bottom: 0.25rem !important;
     line-height: 1.1 !important;
     font-size: clamp(1.35rem, 4vw + 0.25rem, 2.15rem) !important;
   }
-  .cg-subtle {
-    margin-top: 0rem !important;
-    color: #6b7280;
-    font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
-  }
+  .cg-subtle { margin-top: 0rem !important; color: #6b7280; font-size: clamp(0.9rem, 2.6vw, 1rem) !important; }
 
-  /* BACKGROUND-BASED circular header photo (precise crop + subtle border) */
-  .cg-header-avatar {
-    width: 72px; height: 72px;
-    border-radius: 50%;
-    border: 2px solid #e5e7eb;
-    background-size: cover;
-    background-repeat: no-repeat;
-    /* background-position set inline so we can adjust from Python */
-    display: block;
+  /* Header avatar border (image itself is already circular via alpha mask) */
+  .cg-header-avatar img {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 2px solid #e5e7eb; display: block;
   }
-
-  /* stack header on phones + smaller avatar */
   @media (max-width: 640px) {
     .cg-header-wrap .stColumn { width: 100% !important; display: block !important; }
-    .cg-header-avatar { width: 56px; height: 56px; }
+    .cg-header-avatar img { width: 56px; height: 56px; }
+  }
+
+  /* Make assistant avatar in chat circular too */
+  [data-testid="stChatMessageAvatar"] img {
+    border-radius: 50% !important;
+    object-fit: cover !important;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -72,31 +59,56 @@ def find_avatar_path() -> str | None:
             return fname
     return None
 
-def img_to_data_uri(path: str) -> str:
-    """Return a data: URI for a local image (png/jpg)."""
-    ext = os.path.splitext(path)[1].lower()
-    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
-    with open(path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-    return f"data:{mime};base64,{b64}"
+def crop_square_with_focus(img: Image.Image, focus_y_pct: float) -> Image.Image:
+    """
+    Return a square crop. For portrait images, slide the square vertically based on focus_y_pct (0-100).
+    For landscape, center horizontally.
+    """
+    w, h = img.size
+    if w == h:
+        return img.copy()
+
+    if h > w:  # portrait → slide vertically
+        max_off = h - w
+        y_off = int(round(max(0, min(100, focus_y_pct)) / 100.0 * max_off))
+        return img.crop((0, y_off, w, y_off + w))
+    else:      # landscape → center horizontally
+        x_off = (w - h) // 2
+        return img.crop((x_off, 0, x_off + h, h))
+
+def circle_mask(size: int) -> Image.Image:
+    m = Image.new("L", (size, size), 0)
+    d = ImageDraw.Draw(m)
+    d.ellipse((0, 0, size, size), fill=255)
+    return m
+
+def make_header_circle_data_uri(path: str, size: int = 72, focus_y_pct: float = 18) -> str:
+    """Load image, crop to square with vertical focus, resize, apply circular mask (alpha),
+    and return a PNG data URI suitable for <img src=...>."""
+    img = Image.open(path).convert("RGBA")
+    sq = crop_square_with_focus(img, focus_y_pct)
+    sq = sq.resize((size, size), Image.LANCZOS)
+
+    # Apply circular mask (transparent corners)
+    mask = circle_mask(size)
+    sq.putalpha(mask)
+
+    buf = io.BytesIO()
+    sq.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{b64}"
 
 avatar_path = find_avatar_path()
 bot_avatar = avatar_path if avatar_path else "🤖"
 
-# --- Header: circular/bordered top photo (background) + title/subtitle ---
+# --- Header: pre-cropped circular PNG (server-side) + title/subtitle ---
 st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
 hcol_img, hcol_text = st.columns([0.16, 0.84])
 
 with hcol_img:
     if avatar_path:
-        data_uri = img_to_data_uri(avatar_path)
-        # background-position: X% Y%  -> X is center (50), Y is FOCUS_Y from Python
-        st.markdown(
-            f'<div class="cg-header-avatar" '
-            f'style="background-image:url({data_uri}); background-position: 50% {FOCUS_Y}%;">'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+        data_uri = make_header_circle_data_uri(avatar_path, size=72, focus_y_pct=FOCUS_Y)
+        st.markdown(f'<div class="cg-header-avatar"><img alt="Coach Greg" src="{data_uri}"/></div>', unsafe_allow_html=True)
     else:
         st.markdown("🤖")
 
@@ -112,12 +124,12 @@ st.markdown('</div>', unsafe_allow_html=True)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Cap history for performance
+# Keep history performant on mobile
 MAX_HISTORY = 50
 if len(st.session_state.messages) > MAX_HISTORY:
     st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
 
-# --- Chat history (assistant uses your headshot as avatar) ---
+# --- Render history (assistant uses your headshot path as avatar) ---
 for message in st.session_state.messages:
     avatar = bot_avatar if message["role"] == "assistant" else None
     with st.chat_message(message["role"], avatar=avatar):
