@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ---- Tuning: vertical crop focus for the header photo (percent from top) ----
-FOCUS_Y = 20  # try 25–40 if you want a bit more/less forehead shown
+FOCUS_Y = 18  # lower = show more top; try 15–25 to taste
 
 # --- CSS: tight padding, sticky input, responsive header, circular/bordered image ---
 st.markdown("""
@@ -26,7 +26,7 @@ st.markdown("""
   /* prevent iOS zoom on focus */
   textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
 
-  /* keep generic images from overflowing */
+  /* generic images sanity */
   [data-testid="stImage"] img { max-width: 100% !important; height: auto !important; }
 
   /* sticky chat input on small screens */
@@ -46,22 +46,21 @@ st.markdown("""
     font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
   }
 
-  /* HEADER photo: circle crop + subtle border (Streamlit-proof) */
-  .cg-header-avatar img {
-    width: 64px !important;
-    height: 64px !important;
-    object-fit: cover !important;
-    border-radius: 50% !important;
-    -webkit-clip-path: circle(50% at 50% 50%);
-    clip-path: circle(50% at 50% 50%);
+  /* BACKGROUND-BASED circular header photo (precise crop + subtle border) */
+  .cg-header-avatar {
+    width: 72px; height: 72px;
+    border-radius: 50%;
     border: 2px solid #e5e7eb;
-    display: block !important;
+    background-size: cover;
+    background-repeat: no-repeat;
+    /* background-position set inline so we can adjust from Python */
+    display: block;
   }
 
   /* stack header on phones + smaller avatar */
   @media (max-width: 640px) {
     .cg-header-wrap .stColumn { width: 100% !important; display: block !important; }
-    .cg-header-avatar img { width: 52px !important; height: 52px !important; }
+    .cg-header-avatar { width: 56px; height: 56px; }
   }
 </style>
 """, unsafe_allow_html=True)
@@ -84,17 +83,17 @@ def img_to_data_uri(path: str) -> str:
 avatar_path = find_avatar_path()
 bot_avatar = avatar_path if avatar_path else "🤖"
 
-# --- Header: circular/bordered top photo + title/subtitle (no reset here) ---
+# --- Header: circular/bordered top photo (background) + title/subtitle ---
 st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
 hcol_img, hcol_text = st.columns([0.16, 0.84])
 
 with hcol_img:
     if avatar_path:
         data_uri = img_to_data_uri(avatar_path)
-        # object-position centers X (50%) and biases Y toward the top (FOCUS_Y%)
+        # background-position: X% Y%  -> X is center (50), Y is FOCUS_Y from Python
         st.markdown(
-            f'<div class="cg-header-avatar">'
-            f'<img alt="Coach Greg" src="{data_uri}" style="object-position: 50% {FOCUS_Y}%;" />'
+            f'<div class="cg-header-avatar" '
+            f'style="background-image:url({data_uri}); background-position: 50% {FOCUS_Y}%;">'
             f'</div>',
             unsafe_allow_html=True,
         )
