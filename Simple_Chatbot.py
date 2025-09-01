@@ -11,62 +11,64 @@ st.set_page_config(
     page_title="Ask Coach Greg?",
     page_icon="🤖",
     layout="centered",
-    initial_sidebar_state="collapsed",  # no sidebar
+    initial_sidebar_state="collapsed",
 )
 
-# --- Minimal mobile-friendly CSS ---
 st.markdown(
     """
     <style>
       .block-container { padding-top: 1rem !important; padding-bottom: 2rem !important; }
-      /* prevent iOS zoom on focus */
       textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
-      /* keep images from overflowing */
       [data-testid="stImage"] img { max-width: 100% !important; height: auto !important; }
-      /* sticky chat input on small screens */
       @media (max-width: 640px) {
         [data-testid="stChatInput"] { position: sticky; bottom: 0; z-index: 5; }
       }
+      .cg-header img { border-radius: 9999px !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# --- Header ---
-left, right = st.columns([0.7, 0.3])
-with left:
+def resolve_avatar_path() -> str | None:
+    for fname in ("coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"):
+        if os.path.exists(fname):
+            return fname
+    return None
+
+avatar_path = resolve_avatar_path()
+bot_avatar = avatar_path if avatar_path else "🤖"
+
+hcol_img, hcol_text, hcol_btn = st.columns([0.16, 0.64, 0.20])
+with hcol_img:
+    if avatar_path:
+        with st.container():
+            st.markdown('<div class="cg-header">', unsafe_allow_html=True)
+            st.image(avatar_path, use_column_width=True)  # <-- fixed here
+            st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("🤖")
+
+with hcol_text:
     st.title("Ask Coach Greg?")
-    st.write("**Model:** gpt-4o-mini")  # static label on page
-with right:
+    st.write("**Model:** gpt-4o-mini")
+
+with hcol_btn:
     if st.button("Reset Chat", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
-# --- Resolve bot avatar (use your headshot iff it exists) ---
-def resolve_avatar() -> str:
-    for fname in ("coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"):
-        if os.path.exists(fname):
-            return fname
-    return "🤖"  # safe fallback if no image file is present
-
-bot_avatar = resolve_avatar()
-
-# --- Session state ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Limit history to keep mobile snappy
 MAX_HISTORY = 50
 if len(st.session_state.messages) > MAX_HISTORY:
     st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
 
-# --- Render chat history ---
 for message in st.session_state.messages:
     avatar = bot_avatar if message["role"] == "assistant" else None
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
-# --- Chat input & LLM call ---
 temperature = 0.7
 max_token_length = 1000
 placeholder = "Ask about Agile or Traditional PM (e.g., ‘Sprint Review agenda’ or ‘baseline variance handling’)"
@@ -93,7 +95,6 @@ if user_prompt := st.chat_input(placeholder):
 
     st.session_state.messages.append({"role": "assistant", "content": stream_output})
 
-# --- Download transcript ---
 if st.session_state.messages:
     transcript = "\n\n".join(
         f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages
