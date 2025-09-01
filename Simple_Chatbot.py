@@ -17,7 +17,7 @@ st.set_page_config(
 
 # ---- Tuning: vertical crop focus for the header photo (0.0 = top, 1.0 = bottom) ----
 # Smaller value = bias crop toward the top so your head isn't cut.
-FOCUS_Y = 0.22  # try 0.18–0.30 to taste
+FOCUS_Y = 0.05  # try 0.18–0.30 to taste
 
 # --- CSS: tight padding, sticky input, tidy header ---
 st.markdown("""
