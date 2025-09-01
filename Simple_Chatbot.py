@@ -15,6 +15,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ---- Tuning: vertical crop focus for the header photo (percent from top) ----
+FOCUS_Y = 30  # try 25–40 if you want a bit more/less forehead shown
+
 # --- CSS: tight padding, sticky input, responsive header, circular/bordered image ---
 st.markdown("""
 <style>
@@ -43,7 +46,7 @@ st.markdown("""
     font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
   }
 
-  /* HEADER photo: circle crop + subtle border */
+  /* HEADER photo: circle crop + subtle border (Streamlit-proof) */
   .cg-header-avatar img {
     width: 64px !important;
     height: 64px !important;
@@ -51,7 +54,7 @@ st.markdown("""
     border-radius: 50% !important;
     -webkit-clip-path: circle(50% at 50% 50%);
     clip-path: circle(50% at 50% 50%);
-    border: 2px solid #e5e7eb;      /* subtle border */
+    border: 2px solid #e5e7eb;
     display: block !important;
   }
 
@@ -88,8 +91,11 @@ hcol_img, hcol_text = st.columns([0.16, 0.84])
 with hcol_img:
     if avatar_path:
         data_uri = img_to_data_uri(avatar_path)
+        # object-position centers X (50%) and biases Y toward the top (FOCUS_Y%)
         st.markdown(
-            f'<div class="cg-header-avatar"><img alt="Coach Greg" src="{data_uri}"/></div>',
+            f'<div class="cg-header-avatar">'
+            f'<img alt="Coach Greg" src="{data_uri}" style="object-position: 50% {FOCUS_Y}%;" />'
+            f'</div>',
             unsafe_allow_html=True,
         )
     else:
