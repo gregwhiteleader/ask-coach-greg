@@ -14,53 +14,52 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- Mobile-tuned CSS: smaller header on phones, circular avatar, sticky input ---
-st.markdown(
-    """
-    <style>
-      .block-container { padding-top: 0.75rem !important; padding-bottom: 1.25rem !important; }
+# --- CSS: tighter padding, sticky input, TRUE circular header image, responsive header ---
+st.markdown("""
+<style>
+  .block-container { padding-top: 0.75rem !important; padding-bottom: 1.25rem !important; }
 
-      /* prevent iOS zoom on focus */
-      textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
+  /* prevent iOS zoom on focus */
+  textarea, input, .stTextInput, .stChatInputContainer textarea { font-size: 16px !important; }
 
-      /* keep images from overflowing */
-      [data-testid="stImage"] img { max-width: 100% !important; height: auto !important; }
+  /* keep generic images from overflowing */
+  [data-testid="stImage"] img { max-width: 100% !important; height: auto !important; }
 
-      /* sticky chat input on small screens */
-      @media (max-width: 640px) {
-        [data-testid="stChatInput"] { position: sticky; bottom: 0; z-index: 5; }
-      }
+  /* sticky chat input on small screens */
+  @media (max-width: 640px) {
+    [data-testid="stChatInput"] { position: sticky; bottom: 0; z-index: 5; }
+  }
 
-      /* header layout + sizing */
-      .cg-avatar img {
-        width: 72px !important; height: 72px !important;
-        object-fit: cover !important; border-radius: 50% !important; display: block;
-      }
-      .cg-title h1 {
-        margin-bottom: 0.25rem !important;
-        line-height: 1.1 !important;
-        /* responsive title: ~1.4rem on small, up to ~2.25rem on large */
-        font-size: clamp(1.4rem, 4vw + 0.3rem, 2.25rem) !important;
-      }
-      .cg-subtle {
-        margin-top: 0rem !important;
-        color: #6b7280;
-        font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
-      }
+  /* header title sizing */
+  .cg-title h1 {
+    margin-bottom: 0.25rem !important;
+    line-height: 1.1 !important;
+    font-size: clamp(1.35rem, 4vw + 0.25rem, 2.15rem) !important;
+  }
+  .cg-subtle {
+    margin-top: 0rem !important;
+    color: #6b7280;
+    font-size: clamp(0.9rem, 2.6vw, 1rem) !important;
+  }
 
-      /* On narrow screens, make header columns stack and shrink avatar/button */
-      @media (max-width: 640px) {
-        .cg-header-wrap .stColumn { width: 100% !important; display: block !important; }
-        .cg-avatar img { width: 56px !important; height: 56px !important; }
-        .cg-actions .stButton > button {
-          width: 100% !important; padding: 0.45rem 0.75rem !important;
-          font-size: 0.95rem !important;
-        }
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+  /* FORCE a circular crop on the HEADER photo (high specificity to beat Streamlit styles) */
+  .cg-header-avatar [data-testid="stImage"] img,
+  .cg-header-avatar img {
+    width: 64px !important;   /* desktop size; we also force height for perfect circle */
+    height: 64px !important;
+    object-fit: cover !important;
+    border-radius: 50% !important;
+    display: block !important;
+  }
+
+  /* stack header on phones + smaller avatar */
+  @media (max-width: 640px) {
+    .cg-header-wrap .stColumn { width: 100% !important; display: block !important; }
+    .cg-header-avatar [data-testid="stImage"] img,
+    .cg-header-avatar img { width: 52px !important; height: 52px !important; }
+  }
+</style>
+""", unsafe_allow_html=True)
 
 # --- Utility: resolve avatar file if present ---
 def resolve_avatar_path() -> str | None:
@@ -72,14 +71,14 @@ def resolve_avatar_path() -> str | None:
 avatar_path = resolve_avatar_path()
 bot_avatar = avatar_path if avatar_path else "🤖"
 
-# --- Header: avatar + title/subtitle + action button (stacks on mobile) ---
+# --- Header: circular photo + title/subtitle (no reset here) ---
 st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
-hcol_img, hcol_text, hcol_btn = st.columns([0.18, 0.62, 0.20])
+hcol_img, hcol_text = st.columns([0.16, 0.84])
 
 with hcol_img:
     if avatar_path:
-        st.markdown('<div class="cg-avatar">', unsafe_allow_html=True)
-        st.image(avatar_path, width=72)  # CSS makes it circular & resizes on mobile
+        st.markdown('<div class="cg-header-avatar">', unsafe_allow_html=True)
+        st.image(avatar_path, width=64)   # CSS above forces perfect circle + resize on mobile
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.markdown("🤖")
@@ -88,13 +87,6 @@ with hcol_text:
     st.markdown('<div class="cg-title">', unsafe_allow_html=True)
     st.title("Ask Coach Greg?")
     st.markdown('<div class="cg-subtle"><strong>Model:</strong> gpt-4o-mini</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with hcol_btn:
-    st.markdown('<div class="cg-actions">', unsafe_allow_html=True)
-    if st.button("Reset", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
@@ -108,11 +100,27 @@ MAX_HISTORY = 50
 if len(st.session_state.messages) > MAX_HISTORY:
     st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
 
-# --- Render chat history (assistant uses your headshot as avatar) ---
+# --- Chat history (assistant uses your headshot as avatar) ---
 for message in st.session_state.messages:
     avatar = bot_avatar if message["role"] == "assistant" else None
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
+
+# --- Actions row (bottom, keeps header clean): Download | Reset ---
+if st.session_state.messages:
+    a1, a2 = st.columns(2)
+    with a1:
+        transcript = "\n\n".join(f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages)
+        st.download_button(
+            "Download Transcript",
+            transcript,
+            file_name="chat_transcript.txt",
+            use_container_width=True,
+        )
+    with a2:
+        if st.button("Reset Chat", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
 
 # --- Chat input & LLM call ---
 temperature = 0.7
@@ -140,15 +148,3 @@ if user_prompt := st.chat_input(placeholder):
                 st.error(stream_output)
 
     st.session_state.messages.append({"role": "assistant", "content": stream_output})
-
-# --- Download transcript ---
-if st.session_state.messages:
-    transcript = "\n\n".join(
-        f"{m['role'].title()}: {m['content']}" for m in st.session_state.messages
-    )
-    st.download_button(
-        "Download Chat Transcript",
-        transcript,
-        file_name="chat_transcript.txt",
-        use_container_width=True,
-    )
