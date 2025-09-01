@@ -1,4 +1,7 @@
 # Simple_Chatbot.py
+import openai, logging
+logging.warning(f"OpenAI version: {openai.__version__}, from: {openai.__file__}")
+
 import streamlit as st
 from dotenv import load_dotenv
 from config import Config  # noqa: F401
