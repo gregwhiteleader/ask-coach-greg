@@ -1,4 +1,5 @@
 # Simple_Chatbot.py
+import os
 import streamlit as st
 from dotenv import load_dotenv
 from helpers.llm_helper import chat, stream_parser
@@ -41,16 +42,14 @@ with right:
         st.session_state.clear()
         st.rerun()
 
-# --- Resolve bot avatar (your headshot) ---
-bot_avatar = "🤖"
-for fname in ("coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"):
-    try:
-        # just check existence by trying to display hidden (then not using the component)
-        st.session_state["_avatar_probe"] = fname  # harmless store
-        bot_avatar = fname
-        break
-    except Exception:
-        continue
+# --- Resolve bot avatar (use your headshot iff it exists) ---
+def resolve_avatar() -> str:
+    for fname in ("coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"):
+        if os.path.exists(fname):
+            return fname
+    return "🤖"  # safe fallback if no image file is present
+
+bot_avatar = resolve_avatar()
 
 # --- Session state ---
 if "messages" not in st.session_state:
@@ -63,7 +62,6 @@ if len(st.session_state.messages) > MAX_HISTORY:
 
 # --- Render chat history ---
 for message in st.session_state.messages:
-    # Use your headshot for assistant messages, default for user
     avatar = bot_avatar if message["role"] == "assistant" else None
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
