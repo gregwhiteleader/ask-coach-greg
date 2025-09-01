@@ -9,7 +9,16 @@ font="sans serif"
 # Helps on smaller hosts and mobile networks
 maxUploadSize = 50
 enableXsrfProtection = true
+headless = true
+port = 8501
 
 [client]
 # Reduces jank on mobile by trimming cache a bit
 toolbarMode = "minimal"
+showErrorDetails = false   # hides ugly error tracebacks on UI (cleaner for end users)
+
+[browser]
+# Improves mobile scaling
+gatherUsageStats = false
+serverAddress = "0.0.0.0"
+serverPort = 8501
