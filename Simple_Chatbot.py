@@ -2,7 +2,7 @@
 import os, io, base64
 import streamlit as st
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 from helpers.llm_helper import chat, stream_parser
 from config import Config  # noqa: F401
 
@@ -15,8 +15,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ---- Tuning: vertical crop focus for the header photo (percent from top) ----
-FOCUS_Y = 15  # try 15–25; lower = show more top
+# ---- Tuning: vertical crop focus for the header photo (0.0 = top, 1.0 = bottom) ----
+# Smaller value = bias crop toward the top so your head isn't cut.
+FOCUS_Y = 0.22  # try 0.18–0.30 to taste
 
 # --- CSS: tight padding, sticky input, tidy header ---
 st.markdown("""
@@ -34,7 +35,7 @@ st.markdown("""
   }
   .cg-subtle { margin-top: 0rem !important; color: #6b7280; font-size: clamp(0.9rem, 2.6vw, 1rem) !important; }
 
-  /* Header avatar border (image itself is already circular via alpha mask) */
+  /* Header avatar (we already mask to a true circle on the server; border just for polish) */
   .cg-header-avatar img {
     width: 72px; height: 72px; border-radius: 50%;
     border: 2px solid #e5e7eb; display: block;
@@ -52,29 +53,26 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Utils ---
+# --- Helpers ---
 def find_avatar_path() -> str | None:
     for fname in ("coach_greg.png", "coach_greg.jpg", "coach_greg.jpeg"):
         if os.path.exists(fname):
             return fname
     return None
 
-def crop_square_with_focus(img: Image.Image, focus_y_pct: float) -> Image.Image:
+def crop_square_top_biased(img: Image.Image, center_y: float) -> Image.Image:
     """
-    Return a square crop. For portrait images, slide the square vertically based on focus_y_pct (0-100).
-    For landscape, center horizontally.
+    Crop to a square using PIL ImageOps.fit with vertical centering control.
+    center_y in [0,1]: 0 = top, 0.5 = middle, 1 = bottom.
+    This reliably keeps foreheads in-frame for portrait shots.
     """
-    w, h = img.size
-    if w == h:
-        return img.copy()
-
-    if h > w:  # portrait → slide vertically
-        max_off = h - w
-        y_off = int(round(max(0, min(100, focus_y_pct)) / 100.0 * max_off))
-        return img.crop((0, y_off, w, y_off + w))
-    else:      # landscape → center horizontally
-        x_off = (w - h) // 2
-        return img.crop((x_off, 0, x_off + h, h))
+    center_y = max(0.0, min(1.0, center_y))
+    # First crop to the largest centered square using the requested vertical centering,
+    # then resize later to our display size.
+    min_dim = min(img.size)
+    # ImageOps.fit crops to the requested SIZE and RESIZES; give it min_dim x min_dim first
+    square = ImageOps.fit(img, (min_dim, min_dim), method=Image.LANCZOS, centering=(0.5, center_y))
+    return square
 
 def circle_mask(size: int) -> Image.Image:
     m = Image.new("L", (size, size), 0)
@@ -82,11 +80,10 @@ def circle_mask(size: int) -> Image.Image:
     d.ellipse((0, 0, size, size), fill=255)
     return m
 
-def make_header_circle_data_uri(path: str, size: int = 72, focus_y_pct: float = 18) -> str:
-    """Load image, crop to square with vertical focus, resize, apply circular mask (alpha),
-    and return a PNG data URI suitable for <img src=...>."""
+def make_header_circle_data_uri(path: str, size: int = 72, center_y: float = 0.22) -> str:
+    """Load image, square-crop with top bias, resize, apply circular alpha, return PNG data URI."""
     img = Image.open(path).convert("RGBA")
-    sq = crop_square_with_focus(img, focus_y_pct)
+    sq = crop_square_top_biased(img, center_y=center_y)
     sq = sq.resize((size, size), Image.LANCZOS)
 
     # Apply circular mask (transparent corners)
@@ -101,13 +98,13 @@ def make_header_circle_data_uri(path: str, size: int = 72, focus_y_pct: float = 
 avatar_path = find_avatar_path()
 bot_avatar = avatar_path if avatar_path else "🤖"
 
-# --- Header: pre-cropped circular PNG (server-side) + title/subtitle ---
+# --- Header: server-cropped circular PNG + title/subtitle ---
 st.markdown('<div class="cg-header-wrap">', unsafe_allow_html=True)
 hcol_img, hcol_text = st.columns([0.16, 0.84])
 
 with hcol_img:
     if avatar_path:
-        data_uri = make_header_circle_data_uri(avatar_path, size=72, focus_y_pct=FOCUS_Y)
+        data_uri = make_header_circle_data_uri(avatar_path, size=72, center_y=FOCUS_Y)
         st.markdown(f'<div class="cg-header-avatar"><img alt="Coach Greg" src="{data_uri}"/></div>', unsafe_allow_html=True)
     else:
         st.markdown("🤖")
